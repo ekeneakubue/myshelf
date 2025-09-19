@@ -4,12 +4,21 @@ import { useState, useTransition, useEffect } from 'react';
 import { createCompanyStaff, updateCompanyStaff, deleteCompanyStaff } from './actions';
 import { useRouter } from 'next/navigation';
 
-export default function CompanyStaffClient({ staffMembers }: { staffMembers: any[] }) {
+interface StaffMember {
+  id: string;
+  name: string;
+  email: string;
+  role: 'OWNER' | 'ADMIN' | 'MANAGER' | 'MEMBER' | 'super-admin' | 'admin' | 'manager' | 'staff' | string;
+  status: 'ACTIVE' | 'SUSPENDED' | 'INVITED' | 'INACTIVE' | string;
+  createdAt: string | Date;
+}
+
+export default function CompanyStaffClient({ staffMembers }: { staffMembers: StaffMember[] }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [editingStaff, setEditingStaff] = useState<any>(null);
-  const [deletingStaff, setDeletingStaff] = useState<any>(null);
+  const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
+  const [deletingStaff, setDeletingStaff] = useState<StaffMember | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [addedStaffName, setAddedStaffName] = useState('');
   const [error, setError] = useState('');
@@ -76,7 +85,7 @@ export default function CompanyStaffClient({ staffMembers }: { staffMembers: any
     });
   };
 
-  const handleEdit = (staff: any) => {
+  const handleEdit = (staff: StaffMember) => {
     setEditingStaff(staff);
     setEditFormData({
       name: staff.name,
@@ -122,7 +131,7 @@ export default function CompanyStaffClient({ staffMembers }: { staffMembers: any
     });
   };
 
-  const handleDelete = (staff: any) => {
+  const handleDelete = (staff: StaffMember) => {
     setDeletingStaff(staff);
     setIsDeleteModalOpen(true);
   };

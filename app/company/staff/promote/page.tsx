@@ -1,9 +1,11 @@
 import { promoteEmailToAdmin, promoteEmailToSuperAdmin } from '../actions';
 import { redirect } from 'next/navigation';
 
-export default async function PromotePage({ searchParams }: { searchParams?: { email?: string } }) {
+type PromoteSearchParams = { email?: string; to?: 'admin' | 'super-admin' };
+
+export default async function PromotePage({ searchParams }: { searchParams?: PromoteSearchParams }) {
   const email = searchParams?.email || '';
-  const to = (searchParams as any)?.to || 'admin';
+  const to = searchParams?.to || 'admin';
   if (!email) {
     return (
       <div className="p-6 text-sm">

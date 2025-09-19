@@ -173,7 +173,7 @@ export async function updateCompanyStaff(formData: FormData) {
     }
 
     // Update the user
-    const updateData: any = {
+    const updateData: { name: string; email: string; passwordHash?: string } = {
       name,
       email,
     };
