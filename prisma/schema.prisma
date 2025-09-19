@@ -1,0 +1,308 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enable Prisma seed script
+// See: https://www.prisma.io/docs/orm/prisma-migrate/workflows/seeding#enable-seeding
+// prisma/seed.ts will be used automatically
+
+// =====================
+// Enums
+// =====================
+
+enum Role {
+  OWNER
+  ADMIN
+  MANAGER
+  MEMBER
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+}
+
+enum Plan {
+  FREE
+  PRO
+  TEAM
+  ENTERPRISE
+}
+
+enum DocumentStatus {
+  UPLOADED
+  PROCESSING
+  PROCESSED
+  FAILED
+  ARCHIVED
+}
+
+enum JobType {
+  OCR
+  THUMBNAIL
+  TEXT_EXTRACTION
+  EMBEDDING
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum AnnotationType {
+  HIGHLIGHT
+  UNDERLINE
+  STRIKE
+  NOTE
+  BOX
+}
+
+// =====================
+// Models
+// =====================
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String?
+  imageUrl     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  memberships Membership[]
+  documents   Document[]      @relation("UploadedDocuments")
+  annotations Annotation[]
+  auditLogs   AuditLog[]      @relation("ActorAuditLogs")
+  invites     CompanyInvite[] @relation("InviterInvites")
+
+  // Optional: company ownership linkage
+  ownedCompanies Company[]
+
+  @@map("users")
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  domain    String?  @unique
+  logoUrl   String?
+  plan      Plan     @default(FREE)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Owner linkage (optional)
+  ownerId String?
+  owner   User?   @relation(fields: [ownerId], references: [id])
+
+  // Relations
+  memberships Membership[]
+  documents   Document[]
+  tags        Tag[]
+  jobs        ProcessingJob[]
+  auditLogs   AuditLog[]
+  annotations Annotation[]
+  invites     CompanyInvite[]
+
+  @@map("companies")
+}
+
+model Membership {
+  id        String           @id @default(cuid())
+  userId    String
+  companyId String
+  role      Role             @default(MEMBER)
+  status    MembershipStatus @default(ACTIVE)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model Document {
+  id                   String         @id @default(cuid())
+  companyId            String
+  uploaderId           String?
+  title                String
+  originalFilename     String
+  storageKey           String
+  mimeType             String         @default("application/pdf")
+  sizeBytes            Int
+  numPages             Int?
+  checksum             String?
+  status               DocumentStatus @default(UPLOADED)
+  textExtractionMethod String?
+  errorMessage         String?
+  processedAt          DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  company     Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  uploader    User?           @relation("UploadedDocuments", fields: [uploaderId], references: [id], onDelete: SetNull)
+  pages       Page[]
+  annotations Annotation[]
+  tags        DocumentTag[]
+  jobs        ProcessingJob[]
+
+  @@unique([companyId, storageKey])
+  @@unique([companyId, checksum])
+  @@index([companyId, status])
+  @@index([createdAt])
+  @@map("documents")
+}
+
+model Page {
+  id            String   @id @default(cuid())
+  documentId    String
+  index         Int
+  width         Int?
+  height        Int?
+  imageKey      String?
+  text          String?
+  ocrConfidence Float?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, index])
+  @@index([documentId])
+  @@map("pages")
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  companyId String
+  name      String
+  color     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  documentTags DocumentTag[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("tags")
+}
+
+model DocumentTag {
+  documentId String
+  tagId      String
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([documentId, tagId])
+  @@index([tagId])
+  @@map("document_tags")
+}
+
+model ProcessingJob {
+  id          String    @id @default(cuid())
+  companyId   String
+  documentId  String?
+  type        JobType
+  status      JobStatus @default(QUEUED)
+  attempt     Int       @default(0)
+  maxAttempts Int       @default(3)
+  priority    Int       @default(0)
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  lastError   String?
+  payload     Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  document Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, status, type])
+  @@index([documentId])
+  @@index([createdAt])
+  @@map("processing_jobs")
+}
+
+model Annotation {
+  id         String         @id @default(cuid())
+  companyId  String
+  documentId String
+  pageIndex  Int
+  authorId   String?
+  type       AnnotationType @default(HIGHLIGHT)
+  x          Float
+  y          Float
+  width      Float
+  height     Float
+  color      String?
+  comment    String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  author   User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([documentId, pageIndex])
+  @@map("annotations")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  companyId   String
+  actorUserId String?
+  action      String
+  targetType  String?
+  targetId    String?
+  ipAddress   String?
+  userAgent   String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  actor   User?   @relation("ActorAuditLogs", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+model CompanyInvite {
+  id         String           @id @default(cuid())
+  companyId  String
+  email      String
+  role       Role             @default(MEMBER)
+  status     MembershipStatus @default(INVITED)
+  inviterId  String?
+  token      String           @unique
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  inviter User?   @relation("InviterInvites", fields: [inviterId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, email])
+  @@index([companyId])
+  @@map("company_invites")
+}
